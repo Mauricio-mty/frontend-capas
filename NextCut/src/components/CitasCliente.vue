@@ -2,6 +2,8 @@
 import { ref, computed, onMounted, watch, defineProps } from 'vue';
 import Navbar from "@/components/Navbar.vue";
 import Footer from "@/components/Footer.vue";
+import apiClient from '@/services/api.config.js';
+import { appointmentsService } from '@/services/gestionarCitas/appointments.services.js';
 
 const props = defineProps({
   bookedAppointmentsJson: {
@@ -13,27 +15,21 @@ const props = defineProps({
 const today = ref(new Date());
 const citas = ref([]);
 
-const loadAppointments = () => {
+onMounted(async () => {
   try {
-    const parsedAppointments = JSON.parse(props.bookedAppointmentsJson);
-
-    citas.value = parsedAppointments.map(app => ({
-      id: app.id || Math.random().toString(36).substring(2, 11),
-      hora: app.hora || 'N/A',
-      servicio: app.servicio || 'Servicio Desconocido',
-      cliente: app.cliente || 'Cliente',
-      estado: app.estado || 'En sala',
-      date: app.date || new Date().toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: '2-digit' }),
-      barber: app.barber || 'Barbero por asignar'
-    }));
+    const token = localStorage.getItem('token');
+    // Obtener el usuario logueado
+    const userResponse = await apiClient.get('/clients/whoami', {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    const userId = userResponse.data.id;
+    // Obtener todas las citas
+    const allAppointments = await appointmentsService.getAllAppointments();
+    // Filtrar solo las citas del cliente logueado
+    citas.value = allAppointments.filter(cita => cita.clientId === userId);
   } catch (e) {
-    citas.value = []; // Vuelve a un array vacío en caso de error
+    citas.value = [];
   }
-}
-
-
-onMounted(() => {
-  loadAppointments();
 });
 
 // Observar cambios en la prop 'bookedAppointmentsJson' y recargar las citas
@@ -62,23 +58,25 @@ const filteredCitas = computed(() => {
           <h1 class="text-3xl font-bold text-nav-bg font-maven">Mis citas</h1>
         </div>
 
-        <div v-if="filteredCitas.length > 0">
-          <div v-for="cita in filteredCitas" :key="cita.id"
+        <div v-if="citas.length > 0">
+          <div v-for="cita in citas" :key="cita.id"
                class="border border-[#DDDDDD] shadow-xs rounded-md p-4 mb-4 flex flex-col sm:flex-row justify-between items-start sm:items-center">
             <div class="flex flex-col items-start w-full">
               <div class="flex items-center text-gray-600 text-sm font-semibold mb-1">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4 mr-1">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
                 </svg>
-                <span>{{ cita.hora }}</span>
+                <span>{{ cita.start }}</span>
+                <span class="ml-4 text-gray-500">{{ cita.date }}</span>
               </div>
-              <div class="text-gray-800 text-lg font-medium text-left">{{ cita.servicio }} - {{ cita.cliente }}</div>
+              <div class="text-gray-800 text-lg font-medium text-left">{{ cita.service }} - {{ cita.branch }}</div>
               <div class="text-gray-600 text-sm mt-1">Barbero: {{ cita.barber }}</div>
+              <div class="text-gray-600 text-sm mt-1">Estado: {{ cita.status }}</div>
             </div>
           </div>
         </div>
         <div v-else class="text-center text-gray-500 text-lg py-10">
-          No hay citas programadas para esta fecha.
+          No hay citas programadas.
         </div>
       </section>
     </main>

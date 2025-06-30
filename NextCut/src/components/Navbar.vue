@@ -127,6 +127,11 @@ function logout() {
               </router-link>
             </li>
             <li v-if="userIsAuthenticated && userIsEmployee" class="relative">
+              <router-link to="/gestionar-citas-barbero" class="text-sm font-roboto px-3 py-2 font-medium block hover:text-nav-text-hover">
+                CITAS BARBERO
+              </router-link>
+            </li>
+            <li v-if="userIsAuthenticated && userIsEmployee" class="relative">
               <router-link to="/gestionar-empleados" class="text-sm font-roboto px-3 py-2 font-medium block hover:text-nav-text-hover">
                 EMPLEADOS
               </router-link>

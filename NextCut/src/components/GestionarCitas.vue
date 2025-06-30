@@ -6,16 +6,45 @@ import Modal from "@/components/Modal.vue";
 import { ref, computed, h, onMounted } from "vue";
 import Tabla from "@/components/Tabla.vue";
 import { appointmentsService } from '@/services/gestionarCitas/appointments.services.js';
+import { getAllEmployees } from '@/services/gestionarEmpleados/index.js';
+import { branchesService } from '@/services/gestionarSucursales/branches.services.js';
+import { servicesService } from '@/services/gestionarServicios/services.services.js';
+import { getAllClients } from '@/services/gestionarClientes/client.services.js';
 
 const citas = ref([]);
 const loadingCitas = ref(false);
+const barberos = ref([]);
+const sucursales = ref([]);
+const servicios = ref([]);
+const clientes = ref([]);
 
 onMounted(async () => {
   loadingCitas.value = true;
   try {
-    citas.value = await appointmentsService.getAllAppointments();
+    // Obtener token
+    const token = localStorage.getItem('token');
+    // Obtener citas con token en headers
+    const response = await appointmentsService.getAllAppointments(token);
+    citas.value = response;
+    // Obtener barberos
+    const empleados = await getAllEmployees();
+    barberos.value = empleados.filter(e => e.role === 'BARBER');
+    // Obtener sucursales
+    sucursales.value = await branchesService.getAllBranches();
+    // Obtener servicios
+    if (typeof servicesService !== 'undefined' && servicesService.getAllServices) {
+      servicios.value = await servicesService.getAllServices();
+    }
+    // Obtener clientes
+    if (typeof getAllClients !== 'undefined') {
+      clientes.value = await getAllClients();
+    }
   } catch (error) {
     alert(error.message || 'Error al cargar citas');
+    barberos.value = [];
+    sucursales.value = [];
+    servicios.value = [];
+    clientes.value = [];
   } finally {
     loadingCitas.value = false;
   }
@@ -34,9 +63,11 @@ const showAddModalComputed = computed({
   }
 });
 
-const newCita = ref({ servicio: '', cliente: '', empleado: '', hora_inicio: '', hora_final: '', estado: 'Activo', date: '' });
+const newCita = ref({ date: '', start: '', finish: '', service: '', client: '', branch: '' });
 const editedCita = ref(null);
 const citaToDeleteId = ref(null);
+
+const statusOptions = ["LATE", "FINISHED", "ATTENDING", "ONGOING", "UPCOMING", "DIDNT_SHOW_UP"];
 
 const prevDay = () => {
   today.value = new Date(today.value.getTime() - 24 * 60 * 60 * 1000);
@@ -69,17 +100,19 @@ const filteredCitas = computed(() => {
 });
 
 const HeaderTablaCitas = [
-  { text: 'Servicio', class: 'w-[20%] text-left' },
-  { text: 'Cliente', class: 'w-[20%] text-center' },
-  { text: 'Empleado', class: 'w-[20%] text-center' },
-  { text: 'Hora Inicio', class: 'w-[15%] text-center' },
-  { text: 'Hora Final', class: 'w-[15%] text-center' },
+  { text: 'Fecha', class: 'w-[12%] text-left' },
+  { text: 'Hora Inicio', class: 'w-[10%] text-center' },
+  { text: 'Hora Fin', class: 'w-[10%] text-center' },
+  { text: 'Servicio', class: 'w-[15%] text-center' },
+  { text: 'Cliente', class: 'w-[15%] text-center' },
+  { text: 'Sucursal', class: 'w-[15%] text-center' },
+  { text: 'Barbero', class: 'w-[13%] text-center' },
   { text: 'Estado', class: 'w-[10%] text-center' },
-  { text: '', class: 'w-[15%] text-center actions-column' },
+  { text: '', class: 'w-[10%] text-center actions-column' },
 ];
 
 const handleAddCita = () => {
-  newCita.value = { servicio: '', cliente: '', empleado: '', hora_inicio: '', hora_final: '', estado: 'Activo', date: today.value.toISOString().split('T')[0] };
+  newCita.value = { date: '', start: '', finish: '', service: '', client: '', branch: '' };
   activeModal.value = 'add';
 };
 
@@ -95,7 +128,7 @@ const handleDeleteCita = (idToDelete) => {
 
 const closeModal = () => {
   if (activeModal.value === 'add') {
-    newCita.value = { servicio: '', cliente: '', empleado: '', hora_inicio: '', hora_final: '', estado: 'Activo', date: '' };
+    newCita.value = { date: '', start: '', finish: '', service: '', client: '', branch: '' };
   } else if (activeModal.value === 'edit') {
     editedCita.value = null;
   } else if (activeModal.value === 'delete') {
@@ -104,30 +137,44 @@ const closeModal = () => {
   activeModal.value = null;
 };
 
-const submitNewCita = () => {
-  if (!newCita.value.servicio || !newCita.value.cliente || !newCita.value.empleado || !newCita.value.hora_inicio || !newCita.value.hora_final || !newCita.value.estado || !newCita.value.date) {
+const submitNewCita = async () => {
+  if (!newCita.value.date || !newCita.value.start || !newCita.value.finish || !newCita.value.service || !newCita.value.client || !newCita.value.branch) {
     alert('Por favor, complete todos los campos.');
     return;
   }
-  if (newCita.value.hora_final <= newCita.value.hora_inicio) {
-    alert('La hora final debe ser mayor que la hora de inicio.');
+  if (newCita.value.finish <= newCita.value.start) {
+    alert('La hora de fin debe ser mayor que la de inicio.');
     return;
   }
-  const newId = citas.value.length > 0 ? Math.max(...citas.value.map(c => c.id)) + 1 : 1;
-  citas.value.push({ ...newCita.value, id: newId });
-  closeModal();
+  const citaPayload = {
+    date: newCita.value.date,
+    start: newCita.value.start,
+    finish: newCita.value.finish,
+    service: newCita.value.service,
+    client: newCita.value.client,
+    branch: newCita.value.branch
+  };
+  try {
+    await appointmentsService.createAppointment(citaPayload);
+    citas.value = await appointmentsService.getAllAppointments();
+    closeModal();
+  } catch (error) {
+    alert(error.message || 'Error al crear cita');
+  }
 };
 
-const submitEditedCita = () => {
-  if (!editedCita.value.servicio || !editedCita.value.cliente || !editedCita.value.empleado || !editedCita.value.hora_inicio || !editedCita.value.hora_final || !editedCita.value.estado || !editedCita.value.date) {
-    alert('Por favor, complete todos los campos.');
+const submitEditedCita = async () => {
+  if (!editedCita.value.id || !editedCita.value.status) {
+    alert('Por favor, seleccione un estado.');
     return;
   }
-  const index = citas.value.findIndex(c => c.id === editedCita.value.id);
-  if (index !== -1) {
-    citas.value[index] = { ...editedCita.value };
+  try {
+    await appointmentsService.updateAppointmentStatus(editedCita.value.id, editedCita.value.status);
+    citas.value = await appointmentsService.getAllAppointments();
+    closeModal();
+  } catch (error) {
+    alert(error.message || 'Error al actualizar el estado de la cita');
   }
-  closeModal();
 };
 
 const confirmDeleteCita = () => {
@@ -138,18 +185,22 @@ const confirmDeleteCita = () => {
 };
 
 const renderCitaCeldas = (item, header) => {
-  if (header.text === 'Servicio') {
-    return h('span', item.servicio);
-  } else if (header.text === 'Cliente') {
-    return h('span', item.cliente);
-  } else if (header.text === 'Empleado') {
-    return h('span', item.empleado);
+  if (header.text === 'Fecha') {
+    return h('span', item.date);
   } else if (header.text === 'Hora Inicio') {
-    return h('span', item.hora_inicio);
-  } else if (header.text === 'Hora Final') {
-    return h('span', item.hora_final);
+    return h('span', item.start);
+  } else if (header.text === 'Hora Fin') {
+    return h('span', item.finish);
+  } else if (header.text === 'Servicio') {
+    return h('span', item.service);
+  } else if (header.text === 'Cliente') {
+    return h('span', item.client);
+  } else if (header.text === 'Sucursal') {
+    return h('span', item.branch);
+  } else if (header.text === 'Barbero') {
+    return h('span', item.barber);
   } else if (header.text === 'Estado') {
-    return h('span', item.estado);
+    return h('span', item.status);
   } else if (header.class.includes('actions-column')) {
     return h('div', { class: 'flex items-center justify-end gap-4' }, [
       h('button', {
@@ -208,40 +259,51 @@ const renderCitaCeldas = (item, header) => {
           <template #add-modal="{ show, title, closeModal: closeModal }">
             <Modal :show="activeModal === 'add'" :title="title" @close="closeModal">
               <form @submit.prevent="submitNewCita">
-                <div class="mb-6" v-for="field in ['servicio', 'cliente', 'empleado', 'hora_inicio', 'hora_final', 'estado']" :key="field">
+                <div class="mb-6">
                   <div class="relative">
-                    <input
-                        :id="'new-' + field"
-                        v-model="newCita[field]"
-                        :type="field === 'hora_inicio' || field === 'hora_final' ? 'time' : 'text'"
-                        class="block w-full px-3 py-2 border border-gray-300 rounded-md sm:text-sm appearance-none pr-8 pt-2"
-                        required
-                        placeholder=" "
-                    />
-                    <label
-                        :for="'new-' + field"
-                        class="absolute text-medium text-gray-500 transform -translate-y-4 scale-75 top-2 z-10 origin-[0] bg-white start-1 duration-300 peer-placeholder-shown:scale-100 peer-placeholder-shown:translate-y-0 peer-focus:scale-75 peer-focus:-translate-y-4"
-                    >
-                      {{ field.charAt(0).toUpperCase() + field.slice(1).replace('_', ' ') }}
-                    </label>
+                    <select v-model="newCita.branch" required class="block w-full px-3 py-2 border border-gray-300 rounded-md sm:text-sm appearance-none pr-8 pt-2">
+                      <option value="" disabled>Seleccione una sucursal</option>
+                      <option v-for="sucursal in sucursales" :key="sucursal.id" :value="sucursal.id">
+                        {{ sucursal.name }}
+                      </option>
+                    </select>
                   </div>
                 </div>
                 <div class="mb-6">
                   <div class="relative">
-                    <input
-                        id="new-date"
-                        v-model="newCita.date"
-                        type="date"
-                        class="block w-full px-3 py-2 border border-gray-300 rounded-md sm:text-sm appearance-none pr-8 pt-2"
-                        required
-                        placeholder=" "
-                    />
-                    <label
-                        for="new-date"
-                        class="absolute text-medium text-gray-500 transform -translate-y-4 scale-75 top-2 z-10 origin-[0] bg-white start-1 duration-300 peer-placeholder-shown:scale-100 peer-placeholder-shown:translate-y-0 peer-focus:scale-75 peer-focus:-translate-y-4"
-                    >
-                      Fecha
-                    </label>
+                    <select v-model="newCita.service" required class="block w-full px-3 py-2 border border-gray-300 rounded-md sm:text-sm appearance-none pr-8 pt-2">
+                      <option value="" disabled>Seleccione un servicio</option>
+                      <option v-for="servicio in servicios" :key="servicio.id" :value="servicio.id">
+                        {{ servicio.name }}
+                      </option>
+                    </select>
+                  </div>
+                </div>
+                <div class="mb-6">
+                  <div class="relative">
+                    <select v-model="newCita.client" required class="block w-full px-3 py-2 border border-gray-300 rounded-md sm:text-sm appearance-none pr-8 pt-2">
+                      <option value="" disabled>Seleccione un cliente</option>
+                      <option v-for="cliente in clientes" :key="cliente.Id || cliente.id" :value="cliente.Id || cliente.id">
+                        {{ cliente.name }} {{ cliente.lastName }}
+                      </option>
+                    </select>
+                  </div>
+                </div>
+                <div class="mb-6">
+                  <div class="relative flex gap-2">
+                    <div class="flex-1">
+                      <label for="hora-inicio" class="block text-sm font-medium text-gray-700 mb-1">Hora de inicio</label>
+                      <input id="hora-inicio" type="time" v-model="newCita.start" required class="block w-full px-3 py-2 border border-gray-300 rounded-md sm:text-sm appearance-none pr-8 pt-2" />
+                    </div>
+                    <div class="flex-1">
+                      <label for="hora-fin" class="block text-sm font-medium text-gray-700 mb-1">Hora de fin</label>
+                      <input id="hora-fin" type="time" v-model="newCita.finish" required class="block w-full px-3 py-2 border border-gray-300 rounded-md sm:text-sm appearance-none pr-8 pt-2" />
+                    </div>
+                  </div>
+                </div>
+                <div class="mb-6">
+                  <div class="relative">
+                    <input type="date" v-model="newCita.date" required class="block w-full px-3 py-2 border border-gray-300 rounded-md sm:text-sm appearance-none pr-8 pt-2" />
                   </div>
                 </div>
                 <div class="flex justify-end pt-4 gap-2">
@@ -265,47 +327,19 @@ const renderCitaCeldas = (item, header) => {
 
         <Modal :show="activeModal === 'edit'" title="Editar Cita" @close="closeModal">
           <form v-if="editedCita" @submit.prevent="submitEditedCita">
-            <div class="mb-6" v-for="field in ['servicio', 'cliente', 'empleado', 'hora_inicio', 'hora_final', 'estado']" :key="field">
-              <div class="relative">
-                <input
-                    :id="'edit-' + field"
-                    v-model="editedCita[field]"
-                    :type="field === 'hora_inicio' || field === 'hora_final' ? 'time' : 'text'"
-                    class="block w-full px-3 py-2 border border-gray-300 rounded-md sm:text-sm appearance-none pr-8 pt-2"
-                    required
-                    placeholder=" "
-                />
-                <label
-                    :for="'edit-' + field"
-                    class="absolute text-medium text-gray-500 transform -translate-y-4 scale-75 top-2 z-10 origin-[0] bg-white start-1 duration-300 peer-placeholder-shown:scale-100 peer-placeholder-shown:translate-y-0 peer-focus:scale-75 peer-focus:-translate-y-4"
-                >
-                  {{ field.charAt(0).toUpperCase() + field.slice(1).replace('_', ' ') }}
-                </label>
-              </div>
-            </div>
             <div class="mb-6">
               <div class="relative">
-                <input
-                    id="edit-date"
-                    v-model="editedCita.date"
-                    type="date"
-                    class="block w-full px-3 py-2 border border-gray-300 rounded-md sm:text-sm appearance-none pr-8 pt-2"
-                    required
-                    placeholder=" "
-                />
-                <label
-                    for="edit-date"
-                    class="absolute text-medium text-gray-500 transform -translate-y-4 scale-75 top-2 z-10 origin-[0] bg-white start-1 duration-300 peer-placeholder-shown:scale-100 peer-placeholder-shown:translate-y-0 peer-focus:scale-75 peer-focus:-translate-y-4"
-                >
-                  Fecha
-                </label>
+                <label for="edit-status" class="block text-sm font-medium text-gray-700 mb-1">Estado</label>
+                <select id="edit-status" v-model="editedCita.status" required class="block w-full px-3 py-2 border border-gray-300 rounded-md sm:text-sm appearance-none pr-8 pt-2">
+                  <option value="" disabled>Seleccione un estado</option>
+                  <option v-for="status in statusOptions" :key="status" :value="status">{{ status }}</option>
+                </select>
               </div>
             </div>
             <div class="flex justify-end pt-4 gap-2">
               <button type="button" @click="closeModal" class="btn-secondary"> Cancelar
               </button>
-              <button type="submit" class="btn-primary">
-                Guardar Cambios
+              <button type="submit" class="btn-primary"> Guardar Cambios
               </button>
             </div>
           </form>

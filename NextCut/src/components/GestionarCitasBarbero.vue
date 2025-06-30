@@ -1,17 +1,29 @@
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import Navbar from "@/components/Navbar.vue";
 import Footer from "@/components/Footer.vue";
+import { appointmentsService } from '@/services/gestionarCitas/appointments.services.js';
+import { getAllEmployees } from '@/services/gestionarEmpleados/index.js';
 
 const today = ref(new Date());
 
-const citas = ref([
-  { id: 1, hora: '10:50', servicio: 'Corte Clásico', cliente: 'Ester', estado: 'En sala', date: '26/06/25' }, // Using 'DD/MM/YY' for consistency
-  { id: 2, hora: '9:50', servicio: 'Corte Clásico', cliente: 'Esteban', estado: 'Atendiendo', date: '26/06/25' },
-  { id: 3, hora: '8:50', servicio: 'Corte Clásico', cliente: 'Esmeralda', estado: 'Terminado', date: '27/06/25' },
-  { id: 4, hora: '11:00', servicio: 'Corte Caballero', cliente: 'Juan', estado: 'En sala', date: '25/06/25' },
-  { id: 5, hora: '12:00', servicio: 'Afeitado', cliente: 'Pedro', estado: 'En sala', date: '26/06/25' },
-]);
+const citas = ref([]);
+const barberos = ref([]);
+const asignandoBarberoId = ref(null);
+const barberoSeleccionado = ref('');
+
+onMounted(async () => {
+  try {
+    const todasLasCitas = await appointmentsService.getAllAppointments();
+    citas.value = todasLasCitas.filter(cita => !cita.barberId || cita.barberId === '' || cita.barberId === null);
+    // Obtener barberos
+    const empleados = await getAllEmployees();
+    barberos.value = empleados.filter(e => e.role === 'BARBER');
+  } catch (error) {
+    citas.value = [];
+    barberos.value = [];
+  }
+});
 
 const formattedDate = computed(() => {
   const options = { day: '2-digit', month: '2-digit', year: '2-digit' };
@@ -56,6 +68,23 @@ const getStatusColor = (estado) => {
       return 'bg-gray-400';
   }
 };
+
+const asignarBarbero = async (citaId) => {
+  if (!barberoSeleccionado.value) {
+    alert('Seleccione un barbero');
+    return;
+  }
+  try {
+    await appointmentsService.assignBarberToAppointment(citaId, barberoSeleccionado.value);
+    // Refrescar citas tras asignar
+    const todasLasCitas = await appointmentsService.getAllAppointments();
+    citas.value = todasLasCitas.filter(cita => !cita.barberId || cita.barberId === '' || cita.barberId === null);
+    asignandoBarberoId.value = null;
+    barberoSeleccionado.value = '';
+  } catch (error) {
+    alert(error.message || 'Error al asignar barbero');
+  }
+};
 </script>
 
 <template>
@@ -72,42 +101,49 @@ const getStatusColor = (estado) => {
           <button @click="nextDay" aria-label="Día siguiente" class="text-2xl font-bold">&gt;</button>
         </div>
 
-        <div v-if="filteredCitas.length > 0">
-          <div v-for="cita in filteredCitas" :key="cita.id"
+        <div v-if="citas.length > 0">
+          <div v-for="cita in citas" :key="cita.id"
                class="border border-[#DDDDDD] shadow-xs rounded-md p-4 mb-4 flex flex-col sm:flex-row justify-between items-start sm:items-center">
             <div class="flex flex-col items-start w-full sm:w-[70%] mb-4 sm:mb-0">
               <div class="flex items-center text-gray-600 text-sm font-semibold mb-1">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4 mr-1">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
                 </svg>
-                <span>{{ cita.hora }}</span>
+                <span>{{ cita.start }}</span>
+                <span class="ml-4 text-gray-500">{{ cita.date }}</span>
               </div>
-              <div class="text-gray-800 text-lg font-medium text-left">{{ cita.servicio }} - {{ cita.cliente }}</div>
+              <div class="text-gray-800 text-lg font-medium text-left">{{ cita.service }} - {{ cita.client }}</div>
             </div>
 
             <div class="flex flex-col items-end w-full sm:w-[30%]">
               <div class="flex flex-row items-center space-x-2 mb-2">
-                <span :class="['w-3 h-3 rounded-full', getStatusColor(cita.estado)]"></span>
-                <span class="text-gray-700">{{ cita.estado }}</span>
+                <span :class="['w-3 h-3 rounded-full', getStatusColor(cita.status)]"></span>
+                <span class="text-gray-700">{{ cita.status }}</span>
               </div>
-              <button
-                  v-if="cita.estado === 'En sala'"
-                  @click="startCita(cita.id)"
-              class="btn-secondary mb-2">
-                Empezar
-              </button>
-              <button
-                  v-else-if="cita.estado === 'Atendiendo'"
-                  @click="endCita(cita.id)"
-                  class="btn-primary"
-              >
-                Terminar
-              </button>
+              <div v-if="asignandoBarberoId !== cita.id">
+                <button class="btn-primary mb-2" @click="() => { asignandoBarberoId = cita.id; barberoSeleccionado = '' }">
+                  Asignar barbero
+                </button>
+              </div>
+              <div v-else class="flex flex-col gap-2 w-full">
+                <select v-model="barberoSeleccionado" class="block w-full px-3 py-2 border border-gray-300 rounded-md sm:text-sm appearance-none pr-8 pt-2">
+                  <option value="" disabled>Seleccione un barbero</option>
+                  <option v-for="barbero in barberos" :key="barbero.id" :value="barbero.id">
+                    {{ barbero.name }} {{ barbero.lastName }}
+                  </option>
+                </select>
+                <button class="btn-primary mt-2" @click="() => asignarBarbero(cita.id)">
+                  Confirmar asignación
+                </button>
+                <button class="btn-secondary mt-1" @click="() => { asignandoBarberoId = null; barberoSeleccionado = '' }">
+                  Cancelar
+                </button>
+              </div>
             </div>
           </div>
         </div>
         <div v-else class="text-center text-gray-500 text-lg py-10">
-          No hay citas programadas para esta fecha.
+          No hay citas pendientes de asignar barbero.
         </div>
       </section>
     </main>

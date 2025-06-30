@@ -8,4 +8,4 @@ import axios from 'axios'
 const app = createApp(App)
 app.use(router)
 app.mount('#app')
-axios.defaults.baseURL = 'http://localhost:8080/'
+axios.defaults.baseURL = 'https://pnc-proyecto-final-grupo-06-s01-production.up.railway.app/'

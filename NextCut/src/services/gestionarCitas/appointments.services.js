@@ -44,9 +44,9 @@ export const appointmentsService = {
     },
 
     // Cambiar estado de cita
-    updateAppointmentStatus: async (id, statusData) => {
+    updateAppointmentStatus: async (id, status) => {
         try {
-            const response = await apiClient.patch(`/appointments/status/${id}`, statusData);
+            const response = await apiClient.patch(`/appointments/status/${id}?status=${status}`);
             return response.data;
         } catch (error) {
             throw new Error(error.response?.data?.error || 'Error al actualizar estado de cita');
@@ -54,9 +54,9 @@ export const appointmentsService = {
     },
 
     // Asignar barbero a cita
-    assignBarberToAppointment: async (id, barberData) => {
+    assignBarberToAppointment: async (id, barberId) => {
         try {
-            const response = await apiClient.patch(`/appointments/barber/${id}`, barberData);
+            const response = await apiClient.patch(`/appointments/barber/${id}?barber=${barberId}`);
             return response.data;
         } catch (error) {
             throw new Error(error.response?.data?.error || 'Error al asignar barbero');

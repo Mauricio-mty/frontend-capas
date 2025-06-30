@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 // Configuración base de la API
-const API_BASE_URL = 'http://localhost:8080';
+const API_BASE_URL = 'https://pnc-proyecto-final-grupo-06-s01-production.up.railway.app/';
 
 // Crear instancia de axios con configuración base
 const apiClient = axios.create({
