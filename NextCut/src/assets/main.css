@@ -1,0 +1,52 @@
+@import "tailwindcss";
+
+@theme {
+  /* Tipografía */
+  --font-poppins: Poppins, sans-serif;
+  --font-roboto: Roboto, sans-serif;
+  --font-maven: Maven Pro, sans-serif;
+  --font-ponnala: Ponnala, sans-serif;
+
+  /* Colores */
+  --nav-bg: rgba(14, 27, 36, 1);
+  --nav-text: rgba(242, 244, 243, 1);
+  --nav-text-hover: #AE7E41;
+  --tittle: #1D1216;
+  --login: rgba(30, 30, 30, 0.30);
+  --login-input: rgba(255, 255, 255, 0.35);
+
+}
+
+.hover\:text-nav-text-hover:hover {
+  color: var(--nav-text-hover);
+}
+.bg-nav-text-hover {
+  background-color: var(--nav-text-hover);
+}
+.color-tittle {
+  color: var(--tittle);
+}
+
+html, body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+.btn-primary {
+  @apply bg-[#AE7E41] hover:opacity-90 text-[#F2F4F3] font-medium font-roboto py-2 px-6 rounded-lg;
+
+}
+.btn-secondary {
+  @apply bg-[#646B70] hover:opacity-90 text-[#F2F4F3] font-medium font-roboto py-2 px-6 rounded-lg;
+
+}
+
+#app-container {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+main {
+  flex: 1;
+}
